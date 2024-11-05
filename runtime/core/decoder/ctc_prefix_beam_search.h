@@ -74,7 +74,8 @@ struct PrefixHash {
     size_t hash_code = 0;
     // here we use KB&DR hash code
     for (int id : prefix) {
-      hash_code = id + 31 * hash_code;
+      // hash_code = id + 31 * hash_code;
+      hash_code ^= id + 0x9e3779b9 + (hash_code << 6) + (hash_code >> 2);
     }
     return hash_code;
   }

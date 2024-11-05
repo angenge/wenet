@@ -58,6 +58,7 @@ DEFINE_string(bpu_model_dir, "",
 // OVAsrModel flags
 DEFINE_string(openvino_dir, "", "directory where the OV model is saved");
 DEFINE_int32(core_number, 1, "Core number of process");
+DEFINE_int32(gemm_threads_number, 1, "thread number of gemm process");
 
 // FeaturePipelineConfig flags
 DEFINE_int32(num_bins, 80, "num mel bins for fbank feature");
@@ -167,7 +168,8 @@ std::shared_ptr<DecodeResource> InitDecodeResourceFromFlags() {
   if (!FLAGS_onnx_dir.empty()) {
 #ifdef USE_ONNX
     LOG(INFO) << "Reading onnx model ";
-    OnnxAsrModel::InitEngineThreads(kNumGemmThreads);
+    // OnnxAsrModel::InitEngineThreads(kNumGemmThreads);
+    OnnxAsrModel::InitEngineThreads(FLAGS_gemm_threads_number);
     auto model = std::make_shared<OnnxAsrModel>();
     model->Read(FLAGS_onnx_dir);
     resource->model = model;

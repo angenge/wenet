@@ -31,16 +31,20 @@ Ort::SessionOptions OnnxAsrModel::session_options_ = Ort::SessionOptions();
 void OnnxAsrModel::InitEngineThreads(int num_threads) {
   session_options_.SetIntraOpNumThreads(num_threads);
 }
-
+/*
 void OnnxAsrModel::GetInputOutputInfo(
     const std::shared_ptr<Ort::Session>& session,
     std::vector<const char*>* in_names, std::vector<const char*>* out_names) {
   Ort::AllocatorWithDefaultOptions allocator;
+  input_name_storage_.clear();
+  output_name_storage_.clear();
   // Input info
   int num_nodes = session->GetInputCount();
   in_names->resize(num_nodes);
+  input_name_storage_.resize(num_nodes);  // 预留足够空间存储输入名字
   for (int i = 0; i < num_nodes; ++i) {
-    char* name = session->GetInputName(i, allocator);
+    // char* name = session->GetInputName(i, allocator);
+    Ort::AllocatedStringPtr input_name_Ptr = session->GetInputNameAllocated(i, allocator);
     Ort::TypeInfo type_info = session->GetInputTypeInfo(i);
     auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
     ONNXTensorElementDataType type = tensor_info.GetElementType();
@@ -50,15 +54,19 @@ void OnnxAsrModel::GetInputOutputInfo(
       shape << j;
       shape << " ";
     }
-    LOG(INFO) << "\tInput " << i << " : name=" << name << " type=" << type
+    input_name_storage_[i] = std::string(input_name_Ptr.get());
+    //(*in_names)[i] = input_name_Ptr.get();
+    (*in_names)[i] = input_name_storage_[i].c_str();
+    LOG(INFO) << "\tInput " << i << " : name=" << (*in_names)[i] << " type=" << type
               << " dims=" << shape.str();
-    (*in_names)[i] = name;
   }
   // Output info
   num_nodes = session->GetOutputCount();
   out_names->resize(num_nodes);
+  output_name_storage_.resize(num_nodes);
   for (int i = 0; i < num_nodes; ++i) {
-    char* name = session->GetOutputName(i, allocator);
+    // char* name = session->GetOutputName(i, allocator);
+    Ort::AllocatedStringPtr output_name_Ptr= session->GetOutputNameAllocated(i, allocator);
     Ort::TypeInfo type_info = session->GetOutputTypeInfo(i);
     auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
     ONNXTensorElementDataType type = tensor_info.GetElementType();
@@ -68,12 +76,55 @@ void OnnxAsrModel::GetInputOutputInfo(
       shape << j;
       shape << " ";
     }
-    LOG(INFO) << "\tOutput " << i << " : name=" << name << " type=" << type
+    output_name_storage_[i] = std::string(output_name_Ptr.get());
+    //(*out_names)[i] = output_name_Ptr.get();
+    (*out_names)[i] = output_name_storage_[i].c_str();
+    LOG(INFO) << "\tOutput " << i << " : name=" << (*out_names)[i] << " type=" << type
               << " dims=" << shape.str();
-    (*out_names)[i] = name;
   }
 }
-
+*/
+void OnnxAsrModel::GetInputOutputInfo(
+    const std::shared_ptr<Ort::Session>& session,
+    std::vector<std::string>* in_names, std::vector<std::string>* out_names) {
+  Ort::AllocatorWithDefaultOptions allocator;
+  // Input info
+  int num_nodes = session->GetInputCount();
+  in_names->resize(num_nodes);
+  for (int i = 0; i < num_nodes; ++i) {
+    Ort::AllocatedStringPtr input_name_Ptr = session->GetInputNameAllocated(i, allocator);
+    Ort::TypeInfo type_info = session->GetInputTypeInfo(i);
+    auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+    ONNXTensorElementDataType type = tensor_info.GetElementType();
+    std::vector<int64_t> node_dims = tensor_info.GetShape();
+    std::stringstream shape;
+    for (auto j : node_dims) {
+      shape << j;
+      shape << " ";
+    }
+    (*in_names)[i] = std::string(input_name_Ptr.get());;
+    LOG(INFO) << "\tInput " << i << " : name=" << (*in_names)[i] << " type=" << type
+              << " dims=" << shape.str();
+  }
+  // Output info
+  num_nodes = session->GetOutputCount();
+  out_names->resize(num_nodes);
+  for (int i = 0; i < num_nodes; ++i) {
+    Ort::AllocatedStringPtr output_name_Ptr= session->GetOutputNameAllocated(i, allocator);
+    Ort::TypeInfo type_info = session->GetOutputTypeInfo(i);
+    auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+    ONNXTensorElementDataType type = tensor_info.GetElementType();
+    std::vector<int64_t> node_dims = tensor_info.GetShape();
+    std::stringstream shape;
+    for (auto j : node_dims) {
+      shape << j;
+      shape << " ";
+    }
+    (*out_names)[i] = std::string(output_name_Ptr.get());
+    LOG(INFO) << "\tOutput " << i << " : name=" << (*out_names)[i] << " type=" << type
+              << " dims=" << shape.str();
+  }
+}
 void OnnxAsrModel::Read(const std::string& model_dir) {
   std::string encoder_onnx_path = model_dir + "/encoder.onnx";
   std::string rescore_onnx_path = model_dir + "/decoder.onnx";
@@ -106,24 +157,24 @@ void OnnxAsrModel::Read(const std::string& model_dir) {
 
   Ort::AllocatorWithDefaultOptions allocator;
   encoder_output_size_ =
-      atoi(model_metadata.LookupCustomMetadataMap("output_size", allocator));
+      atoi(model_metadata.LookupCustomMetadataMapAllocated("output_size", allocator).get());
   num_blocks_ =
-      atoi(model_metadata.LookupCustomMetadataMap("num_blocks", allocator));
-  head_ = atoi(model_metadata.LookupCustomMetadataMap("head", allocator));
+      atoi(model_metadata.LookupCustomMetadataMapAllocated("num_blocks", allocator).get());
+  head_ = atoi(model_metadata.LookupCustomMetadataMapAllocated("head", allocator).get());
   cnn_module_kernel_ = atoi(
-      model_metadata.LookupCustomMetadataMap("cnn_module_kernel", allocator));
+      model_metadata.LookupCustomMetadataMapAllocated("cnn_module_kernel", allocator).get());
   subsampling_rate_ = atoi(
-      model_metadata.LookupCustomMetadataMap("subsampling_rate", allocator));
+      model_metadata.LookupCustomMetadataMapAllocated("subsampling_rate", allocator).get());
   right_context_ =
-      atoi(model_metadata.LookupCustomMetadataMap("right_context", allocator));
-  sos_ = atoi(model_metadata.LookupCustomMetadataMap("sos_symbol", allocator));
-  eos_ = atoi(model_metadata.LookupCustomMetadataMap("eos_symbol", allocator));
-  is_bidirectional_decoder_ = atoi(model_metadata.LookupCustomMetadataMap(
-      "is_bidirectional_decoder", allocator));
+      atoi(model_metadata.LookupCustomMetadataMapAllocated("right_context", allocator).get());
+  sos_ = atoi(model_metadata.LookupCustomMetadataMapAllocated("sos_symbol", allocator).get());
+  eos_ = atoi(model_metadata.LookupCustomMetadataMapAllocated("eos_symbol", allocator).get());
+  is_bidirectional_decoder_ = atoi(model_metadata.LookupCustomMetadataMapAllocated(
+      "is_bidirectional_decoder", allocator).get());
   chunk_size_ =
-      atoi(model_metadata.LookupCustomMetadataMap("chunk_size", allocator));
+      atoi(model_metadata.LookupCustomMetadataMapAllocated("chunk_size", allocator).get());
   num_left_chunks_ =
-      atoi(model_metadata.LookupCustomMetadataMap("left_chunks", allocator));
+      atoi(model_metadata.LookupCustomMetadataMapAllocated("left_chunks", allocator).get());
 
   LOG(INFO) << "Onnx Model Info:";
   LOG(INFO) << "\tencoder_output_size " << encoder_output_size_;
@@ -145,6 +196,29 @@ void OnnxAsrModel::Read(const std::string& model_dir) {
   GetInputOutputInfo(ctc_session_, &ctc_in_names_, &ctc_out_names_);
   LOG(INFO) << "Onnx Rescore:";
   GetInputOutputInfo(rescore_session_, &rescore_in_names_, &rescore_out_names_);
+
+  //4. Debug
+  std::cout<<"----------------Encoder--1---------------"<<std::endl;
+  for (const auto& name : encoder_in_names_) {
+    std::cout << "Input name: " << name << std::endl;
+  }
+  for (const auto& name : encoder_out_names_) {
+    std::cout << "Output name: " << name << std::endl;
+  }
+  std::cout<<"----------------CTC-----------------"<<std::endl;
+  for (const auto& name : ctc_in_names_) {
+    std::cout << "Input name: " << name << std::endl;
+  }
+  for (const auto& name : ctc_out_names_) {
+    std::cout << "Output name: " << name << std::endl;
+  }
+  std::cout<<"----------------Rescore-----------------"<<std::endl;
+  for (const auto& name : rescore_in_names_) {
+    std::cout << "Input name: " << name << std::endl;
+  }
+  for (const auto& name : rescore_out_names_) {
+    std::cout << "Output name: " << name << std::endl;
+  }
 }
 
 OnnxAsrModel::OnnxAsrModel(const OnnxAsrModel& other) {
@@ -264,24 +338,32 @@ void OnnxAsrModel::ForwardEncoderFunc(
   // 2. Encoder chunk forward
   std::vector<Ort::Value> inputs;
   for (auto name : encoder_in_names_) {
-    if (!strcmp(name, "chunk")) {
+    if (!strcmp(name.c_str(), "chunk")) {
       inputs.emplace_back(std::move(feats_ort));
-    } else if (!strcmp(name, "offset")) {
+    } else if (!strcmp(name.c_str(), "offset")) {
       inputs.emplace_back(std::move(offset_ort));
-    } else if (!strcmp(name, "required_cache_size")) {
+    } else if (!strcmp(name.c_str(), "required_cache_size")) {
       inputs.emplace_back(std::move(required_cache_size_ort));
-    } else if (!strcmp(name, "att_cache")) {
+    } else if (!strcmp(name.c_str(), "att_cache")) {
       inputs.emplace_back(std::move(att_cache_ort_));
-    } else if (!strcmp(name, "cnn_cache")) {
+    } else if (!strcmp(name.c_str(), "cnn_cache")) {
       inputs.emplace_back(std::move(cnn_cache_ort_));
-    } else if (!strcmp(name, "att_mask")) {
+    } else if (!strcmp(name.c_str(), "att_mask")) {
       inputs.emplace_back(std::move(att_mask_ort));
     }
   }
 
+  std::vector<const char*> encoder_input_names(encoder_in_names_.size());
+  std::transform(encoder_in_names_.begin(), encoder_in_names_.end(), encoder_input_names.begin(),
+               [](const std::string& name) { return name.c_str(); });
+
+  std::vector<const char*> encoder_output_names(encoder_out_names_.size());
+  std::transform(encoder_out_names_.begin(), encoder_out_names_.end(), encoder_output_names.begin(),
+               [](const std::string& name) { return name.c_str(); });
+
   std::vector<Ort::Value> ort_outputs = encoder_session_->Run(
-      Ort::RunOptions{nullptr}, encoder_in_names_.data(), inputs.data(),
-      inputs.size(), encoder_out_names_.data(), encoder_out_names_.size());
+      Ort::RunOptions{nullptr}, encoder_input_names.data(), inputs.data(),
+      inputs.size(), encoder_output_names.data(), encoder_output_names.size());
 
   offset_ += static_cast<int>(
       ort_outputs[0].GetTensorTypeAndShapeInfo().GetShape()[1]);
@@ -291,9 +373,17 @@ void OnnxAsrModel::ForwardEncoderFunc(
   std::vector<Ort::Value> ctc_inputs;
   ctc_inputs.emplace_back(std::move(ort_outputs[0]));
 
+  std::vector<const char*> ctc_input_names(ctc_in_names_.size());
+  std::transform(ctc_in_names_.begin(), ctc_in_names_.end(), ctc_input_names.begin(),
+               [](const std::string& name) { return name.c_str(); });
+
+  std::vector<const char*> ctc_output_names(ctc_out_names_.size());
+  std::transform(ctc_out_names_.begin(), ctc_out_names_.end(), ctc_output_names.begin(),
+               [](const std::string& name) { return name.c_str(); });
+
   std::vector<Ort::Value> ctc_ort_outputs = ctc_session_->Run(
-      Ort::RunOptions{nullptr}, ctc_in_names_.data(), ctc_inputs.data(),
-      ctc_inputs.size(), ctc_out_names_.data(), ctc_out_names_.size());
+      Ort::RunOptions{nullptr}, ctc_input_names.data(), ctc_inputs.data(),
+      ctc_inputs.size(), ctc_output_names.data(), ctc_output_names.size());
   encoder_outs_.push_back(std::move(ctc_inputs[0]));
 
   float* logp_data = ctc_ort_outputs[0].GetTensorMutableData<float>();
@@ -393,10 +483,18 @@ void OnnxAsrModel::AttentionRescoring(const std::vector<std::vector<int>>& hyps,
   rescore_inputs.emplace_back(std::move(hyps_lens_tensor_));
   rescore_inputs.emplace_back(std::move(decode_input_tensor_));
 
+  std::vector<const char*> rescore_input_names(rescore_in_names_.size());
+  std::transform(rescore_in_names_.begin(), rescore_in_names_.end(), rescore_input_names.begin(),
+               [](const std::string& name) { return name.c_str(); });
+
+  std::vector<const char*> rescore_output_names(rescore_out_names_.size());
+  std::transform(rescore_out_names_.begin(), rescore_out_names_.end(), rescore_output_names.begin(),
+               [](const std::string& name) { return name.c_str(); });
+
   std::vector<Ort::Value> rescore_outputs = rescore_session_->Run(
-      Ort::RunOptions{nullptr}, rescore_in_names_.data(), rescore_inputs.data(),
-      rescore_inputs.size(), rescore_out_names_.data(),
-      rescore_out_names_.size());
+      Ort::RunOptions{nullptr}, rescore_input_names.data(), rescore_inputs.data(),
+      rescore_inputs.size(), rescore_output_names.data(),
+      rescore_output_names.size());
 
   float* decoder_outs_data = rescore_outputs[0].GetTensorMutableData<float>();
   float* r_decoder_outs_data = rescore_outputs[1].GetTensorMutableData<float>();

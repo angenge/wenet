@@ -67,6 +67,7 @@ void AsrDecoder::Reset() {
 void AsrDecoder::ResetContinuousDecoding() {
   global_frame_offset_ = num_frames_;
   start_ = false;
+  elapsed_time_ = 0;
   result_.clear();
   model_->Reset();
   searcher_->Reset();
@@ -127,6 +128,7 @@ DecodeState AsrDecoder::AdvanceDecoding(bool block) {
     }
   }
 
+  elapsed_time_ = forward_time + search_time;
   start_ = true;
   return state;
 }
@@ -242,4 +244,7 @@ void AsrDecoder::AttentionRescoring() {
   std::sort(result_.begin(), result_.end(), DecodeResult::CompareFunc);
 }
 
+int AsrDecoder::GetDecodeElapsedTime(){
+   return elapsed_time_;
+}
 }  // namespace wenet
